@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>File Sharing Service</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Сервис обмена файлами</h1>
+    <p class="subtitle">Загрузите файл и получите ссылку для скачивания</p>
+    <form id="loginForm">
+      <input type="text" id="loginUsername" placeholder="Логин: user" required />
+      <input type="password" id="loginPassword" placeholder="Пароль: password" required />
+      <button type="submit">Войти</button>
+    </form>
+    <div id="authInfo" class="helper" style="display:none">
+      Вы вошли. <a href="#" id="logoutLink">Выйти</a>
+    </div>
+    <form id="uploadForm">
+      <input type="file" id="fileInput" required />
+      <button type="submit">Загрузить</button>
+    </form>
+    <div id="status"></div>
+    <div id="linkContainer"></div>
+    <div class="helper">Ссылка действует до 30 дней с последнего скачивания</div>
+  </div>
+
+  <script>
+    let AUTH_TOKEN = localStorage.getItem("token") || "";
+    const form = document.getElementById("uploadForm");
+    const fileInput = document.getElementById("fileInput");
+    const statusEl = document.getElementById("status");
+    const linkContainer = document.getElementById("linkContainer");
+    const loginForm = document.getElementById("loginForm");
+    const loginUsername = document.getElementById("loginUsername");
+    const loginPassword = document.getElementById("loginPassword");
+    const authInfo = document.getElementById("authInfo");
+    const logoutLink = document.getElementById("logoutLink");
+
+    function updateAuthUI() {
+      const loggedIn = !!AUTH_TOKEN;
+      loginForm.style.display = loggedIn ? "none" : "grid";
+      form.style.display = loggedIn ? "grid" : "none";
+      authInfo.style.display = loggedIn ? "block" : "none";
+    }
+
+    updateAuthUI();
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      statusEl.textContent = "";
+      statusEl.className = "";
+      try {
+        const resp = await fetch("/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: loginUsername.value.trim(), password: loginPassword.value })
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        AUTH_TOKEN = data.token;
+        localStorage.setItem("token", AUTH_TOKEN);
+        updateAuthUI();
+        statusEl.textContent = "Авторизация успешна";
+        statusEl.className = "ok";
+      } catch (err) {
+        statusEl.textContent = (err && err.message) ? err.message : "Ошибка авторизации";
+        statusEl.className = "err";
+      }
+    });
+
+    logoutLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      localStorage.removeItem("token");
+      AUTH_TOKEN = "";
+      updateAuthUI();
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      statusEl.textContent = "";
+      statusEl.className = "";
+      linkContainer.innerHTML = "";
+
+      if (!fileInput.files.length) {
+        statusEl.textContent = "Пожалуйста, выберите файл";
+        statusEl.className = "err";
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        statusEl.textContent = "Загрузка...";
+        statusEl.className = "";
+        const response = await fetch("/upload", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${AUTH_TOKEN}`
+          },
+          body: formData,
+        });
+        if (!response.ok) {
+          const msg = await response.text();
+          throw new Error(msg || "Ошибка загрузки");
+        }
+
+        const data = await response.json();
+        statusEl.textContent = "Файл успешно загружен";
+        statusEl.className = "ok";
+        const link = document.createElement("a");
+        link.href = data.downloadUrl;
+        link.textContent = "Скачать файл";
+        link.className = "download-link";
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.textContent = "Копировать ссылку";
+        copyBtn.style.marginLeft = "8px";
+        copyBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(new URL(link.href, location.origin).toString());
+            statusEl.textContent = "Ссылка скопирована";
+            statusEl.className = "ok";
+          } catch (_) {
+            statusEl.textContent = "Не удалось скопировать ссылку";
+            statusEl.className = "err";
+          }
+        });
+        linkContainer.appendChild(link);
+        linkContainer.appendChild(copyBtn);
+      } catch (error) {
+        statusEl.textContent = (error && error.message) ? error.message : "Ошибка загрузки файла";
+        statusEl.className = "err";
+      }
+    });
+  </script>
+</body>
+</html>
