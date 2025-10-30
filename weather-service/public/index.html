@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Weather Service</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h2 class="title">Погода по городам (Open‑Meteo)</h2>
+    <form id="form" class="form">
+      <input type="text" id="city" class="input" placeholder="Moscow" aria-label="Город" required />
+      <button type="submit" class="button">Показать прогноз</button>
+    </form>
+    <div id="info" class="info"></div>
+    <div class="card">
+      <canvas id="chart" class="chart"></canvas>
+    </div>
+  </div>
+  <script>
+    const form = document.getElementById("form");
+    const cityInput = document.getElementById("city");
+    const info = document.getElementById("info");
+    const ctx = document.getElementById('chart').getContext('2d');
+    let chart;
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      info.textContent = "Загрузка...";
+      const city = cityInput.value.trim();
+      try {
+        const res = await fetch(`/weather?city=${encodeURIComponent(city)}`);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        info.textContent = `${data.city}, ${data.country}`;
+
+        // Данные для 24 часов
+        const hours = data.hourly.time.slice(0, 24).map(t => t.split("T")[1]);
+        const temps = data.hourly.temperature_2m.slice(0, 24);
+
+        if (chart) chart.destroy();
+        chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: hours,
+            datasets: [{ label: 'Температура, °C', data: temps, borderColor: '#2196f3', fill: false }]
+          },
+          options: { scales: { x: { title: { display: true, text: 'Часы' } }, y: { title: { display: true, text: 'Температура, °C' } } } }
+        });
+      } catch (err) {
+        info.textContent = `Ошибка: ${err.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
